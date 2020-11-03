@@ -1,0 +1,431 @@
+---
+title: "Brand Perception using Twitter Sentiment Analysis"
+author: "Divija Kambhampati, Harshitha Shabad, Payal Sen"
+date: "2/25/2020"
+output: html_document
+---
+
+## Including libraries
+```{r message=FALSE, warning=FALSE}
+library(rtweet)
+library(tm)
+library(stringi)
+library(DT)
+library(ggplot2)
+library(gbm)
+library(syuzhet)
+library(readr)
+library(tidytext)
+library(lexicon)
+library(sentimentr)
+library(textdata)
+library(SentimentAnalysis)
+library(radiant.data)
+```
+
+
+## API Keys
+```{r message=FALSE, warning=FALSE}
+#app_name <- "BrandPerception"
+#consumer_key <- "0BTnNc2Yj0R0eg1Fy8baxMTY9"
+#consumer_secret <- "WrdMffgjSzIyTqxn8775vyGRzjQ1Huz1jxWuG7W6rtmnXd9GnK"
+```
+
+
+## create token
+```{r message=FALSE, warning=FALSE}
+#token <- create_token(app_name, consumer_key, consumer_secret)
+#token
+```
+
+
+## Download Nike tweets
+```{r message=FALSE, warning=FALSE}
+#nike_tweets <- search_tweets(q = "#Nike", n = 20000,
+#                             lang = "en",
+#                             retryonratelimit = TRUE)
+#nike_tweets
+```
+
+## Download Adidas tweets
+```{r message=FALSE, warning=FALSE}
+#Adidas_tweets <- search_tweets(q = "#Adidas", n = 20000,
+#                             lang = "en",
+#                             retryonratelimit = TRUE)
+#Adidas_tweets
+```
+
+## Removing unused columns from Nike tweets
+```{r message=FALSE, warning=FALSE}
+#drop <- c("hashtags","symbols","urls_url","ext_media_expanded_url","ext_m#edia_t.co","ext_media_url","media_expanded_url","media_t.co","media_url",#"media_type", "media_url","urls_expanded_url","urls_t.co","mentions_user_#id","mentions_screen_name","geo_coords","bbox_coords","coords_coords")
+#nike_tweets = nike_tweets[,!(names(nike_tweets) %in% drop)]
+
+#write.csv(nike_tweets,"nike_tweets.csv", row.names = FALSE)
+```
+
+## Removing unused columns from Adidas tweets
+```{r message=FALSE, warning=FALSE}
+#drop <- c("hashtags","symbols","urls_url","ext_media_expanded_url","ext_m#edia_t.co","ext_media_url","media_expanded_url","media_t.co","media_url",#"media_type", "media_url","urls_expanded_url","urls_t.co","mentions_user_#id","mentions_screen_name","geo_coords","bbox_coords","coords_coords")
+#adidas_tweets = adidas_tweets[,!(names(adidas_tweets) %in% drop)]
+
+#write.csv(adidas_tweets,"adidas_tweets.csv", row.names = FALSE)
+```
+
+## Read Nike tweets CSV
+```{r message=FALSE, warning=FALSE}
+nike_df <- read.csv(file="nike_tweets.csv")
+```
+
+## Read Adidas tweets CSV
+```{r message=FALSE, warning=FALSE}
+adidas_df <- read.csv(file="adidas_tweets.csv")
+
+```
+
+## Creating corpus
+- A corpus can be defined as a collection of text documents. It can be thought as just a bunch of text files in a directory, often alongside many other directories of text files.
+```{r message=FALSE, warning=FALSE}
+corpus_nike<- Corpus(VectorSource(nike_df$text))
+writeLines(strwrap(corpus_nike[[750]]$content,60))
+
+```
+
+```{r message=FALSE, warning=FALSE}
+corpus_adidas<- Corpus(VectorSource(adidas_df$text))
+writeLines(strwrap(corpus_adidas[[750]]$content,60))
+
+```
+
+
+## Remove URL
+```{r message=FALSE, warning=FALSE}
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+corpus_nike <- tm_map(corpus_nike, content_transformer(removeURL))
+```
+
+## Remove Punctuation
+```{r message=FALSE, warning=FALSE}
+remove_punct<-function(x)gsub("[^[:alpha:][:space:]]*", "", x)
+corpus_nike <- tm_map(corpus_nike, content_transformer(remove_punct))
+```
+
+## Strip White space
+```{r message=FALSE, warning=FALSE}
+corpus_nike = tm_map(corpus_nike, stripWhitespace)
+```
+
+## Remove user Name
+```{r message=FALSE, warning=FALSE}
+removeUsername <- function(x) gsub("@[^[:space:]]*", "", x)
+corpus_nike <- tm_map(corpus_nike, content_transformer(removeUsername))
+writeLines(strwrap(corpus_nike[[750]]$content,60))
+```
+
+## Convert text to lower case
+```{r message=FALSE, warning=FALSE}
+corpus_nike <- tm_map(corpus_nike,content_transformer(stri_trans_tolower))
+writeLines(strwrap(corpus_nike[[750]]$content,60))
+```
+
+## Remove stop words
+```{r message=FALSE, warning=FALSE}
+corpus_nike = tm_map(corpus_nike, removeWords, stopwords('English'))
+writeLines(strwrap(corpus_nike[[750]]$content,60))
+```
+
+## remove single letter words
+
+```{r message=FALSE, warning=FALSE}
+removeSingle <- function(x) gsub(" . ", " ", x)
+corpus_nike <- tm_map(corpus_nike, content_transformer(removeSingle))
+writeLines(strwrap(corpus_nike[[750]]$content,60))
+```
+
+
+## Building Term Document Matrix
+```{r message=FALSE, warning=FALSE}
+dtm <- TermDocumentMatrix(corpus_nike)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+datatable(head(d, 10))
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+tdm<- TermDocumentMatrix(corpus_nike, control= list(wordLengths= c(1, Inf)))
+```
+
+## Terms used most frequently
+```{r message=FALSE, warning=FALSE}
+dtf <- DocumentTermMatrix(corpus_nike)
+freq.terms <- findFreqTerms(tdm, lowfreq = 25)
+term.freq <- rowSums(as.matrix(tdm))
+term.freq <- subset(term.freq, term.freq >1000)
+df <- data.frame(term = names(term.freq), freq= term.freq)
+ggplot(df, aes(reorder(term, freq),freq)) + theme_bw() + geom_bar(stat = "identity")  + coord_flip() +labs(list(title="Term Frequency Chart", x="Terms", y="Term Counts"))
+```
+
+## Frequency analysis
+```{r message=FALSE, warning=FALSE}
+(freq.terms <- findFreqTerms(tdm, lowfreq = 1000))
+```
+
+```{r message=FALSE, warning=FALSE}
+
+term.freq <- rowSums(as.matrix(tdm))
+term.freq <- subset(term.freq, term.freq > 1000)
+df1 <- data.frame(term = names(term.freq), freq= term.freq)
+
+
+```
+## Plotting the graph of frequent terms
+
+
+```{r message=FALSE, warning=FALSE}
+p3=ggplot(df1, aes(reorder(term, freq),freq)) + theme_bw() + geom_bar(stat = "identity")  + coord_flip() +labs(list(title="@55", x="Terms", y="Term Counts"))
+
+grid.arrange(p3,ncol=1)
+```
+
+## Plot word frequencies
+```{r message=FALSE, warning=FALSE}
+barplot(d[1:10,]$freq, las = 2, names.arg = d[1:10,]$word,
+        col ="lightblue", main ="Most frequent words",
+        ylab = "Word frequencies")
+```
+
+
+
+
+## Clustering
+
+```{r message=FALSE, warning=FALSE}
+# remove sparse terms
+tdm2 <- removeSparseTerms(tdm, sparse = 0.95)
+m2 <- as.matrix(tdm2)
+# cluster terms
+distMatrix <- dist(scale(m2))
+fit <- hclust(distMatrix, method = "ward")
+```
+
+
+
+## Adidas
+
+## Read Adidas tweets CSV
+```{r message=FALSE, warning=FALSE}
+adidas_df <- read.csv(file="adidas_tweets.csv")
+```
+
+## Creating corpus
+- A corpus can be defined as a collection of text documents. It can be thought as just a bunch of text files in a directory, often alongside many other directories of text files.
+```{r message=FALSE, warning=FALSE}
+corpus_adidas<- Corpus(VectorSource(adidas_df$text))
+writeLines(strwrap(corpus_adidas[[750]]$content,60))
+
+```
+
+
+
+## Remove URL
+```{r message=FALSE, warning=FALSE}
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+corpus_adidas <- tm_map(corpus_adidas, content_transformer(removeURL))
+```
+
+## Remove Punctuation
+```{r message=FALSE, warning=FALSE}
+remove_punct<-function(x)gsub("[^[:alpha:][:space:]]*", "", x)
+corpus_adidas <- tm_map(corpus_adidas, content_transformer(remove_punct))
+```
+
+## Strip White space
+```{r message=FALSE, warning=FALSE}
+corpus_adidas = tm_map(corpus_adidas, stripWhitespace)
+```
+
+## Remove user Name
+```{r message=FALSE, warning=FALSE}
+removeUsername <- function(x) gsub("@[^[:space:]]*", "", x)
+corpus_adidas <- tm_map(corpus_adidas, content_transformer(removeUsername))
+writeLines(strwrap(corpus_adidas[[750]]$content,60))
+```
+
+## Convert text to lower case
+```{r message=FALSE, warning=FALSE}
+corpus_adidas <- tm_map(corpus_adidas,content_transformer(stri_trans_tolower))
+writeLines(strwrap(corpus_adidas[[750]]$content,60))
+```
+
+## Remove stop words
+```{r message=FALSE, warning=FALSE}
+corpus_adidas = tm_map(corpus_adidas, removeWords, stopwords('English'))
+writeLines(strwrap(corpus_adidas[[750]]$content,60))
+```
+
+## remove single letter words
+
+```{r message=FALSE, warning=FALSE}
+removeSingle <- function(x) gsub(" . ", " ", x)
+corpus_adidas <- tm_map(corpus_adidas, content_transformer(removeSingle))
+writeLines(strwrap(corpus_adidas[[750]]$content,60))
+```
+
+
+## Building Term Document Matrix
+```{r message=FALSE, warning=FALSE}
+dtm1 <- TermDocumentMatrix(corpus_adidas)
+m1 <- as.matrix(dtm1)
+v1 <- sort(rowSums(m1),decreasing=TRUE)
+d1 <- data.frame(word = names(v1),freq=v1)
+datatable(head(d1, 10))
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+tdm1<- TermDocumentMatrix(corpus_adidas, control= list(wordLengths= c(1, Inf)))
+```
+
+## Terms used most frequently
+```{r message=FALSE, warning=FALSE}
+dtf1 <- DocumentTermMatrix(corpus_nike)
+freq.terms1 <- findFreqTerms(tdm1, lowfreq = 25)
+term.freq1 <- rowSums(as.matrix(tdm1))
+term.freq1 <- subset(term.freq1, term.freq1 >1000)
+df12 <- data.frame(term = names(term.freq1), freq= term.freq1)
+ggplot(df12, aes(reorder(term, freq),freq)) + theme_bw() + geom_bar(stat = "identity")  + coord_flip() +labs(list(title="Term Frequency Chart", x="Terms", y="Term Counts"))
+```
+
+## Frequency analysis
+```{r message=FALSE, warning=FALSE}
+(freq.terms1 <- findFreqTerms(tdm1, lowfreq = 1000))
+```
+
+```{r message=FALSE, warning=FALSE}
+
+term.freq1 <- rowSums(as.matrix(tdm1))
+term.freq1 <- subset(term.freq1, term.freq1 > 1000)
+df13 <- data.frame(term = names(term.freq1), freq= term.freq1)
+
+
+```
+## Plotting the graph of frequent terms
+
+
+```{r message=FALSE, warning=FALSE}
+p4=ggplot(df13, aes(reorder(term, freq),freq)) + theme_bw() + geom_bar(stat = "identity")  + coord_flip() +labs(list(title="@55", x="Terms", y="Term Counts"))
+
+grid.arrange(p4,ncol=1)
+```
+
+## Plot word frequencies
+```{r message=FALSE, warning=FALSE}
+barplot(d[1:10,]$freq, las = 2, names.arg = d[1:10,]$word,
+        col ="lightblue", main ="Most frequent words",
+        ylab = "Word frequencies")
+```
+
+
+## Word Cloud
+
+```{r message=FALSE, warning=FALSE}
+#par(mfrow=c(3,2))
+library(wordcloud)
+m <- as.matrix(tdm)
+# calculate the frequency of words and sort it by frequency
+word.freq <- sort(rowSums(m), decreasing = F)
+# colors
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:4)]
+# plot word cloud
+wordcloud(words = names(word.freq), freq = word.freq, min.freq = 3,
+random.order = F, colors = brewer.pal(6, "Dark2"))
+          
+```
+
+## Word Cloud Adidas
+
+```{r message=FALSE, warning=FALSE}
+#par(mfrow=c(3,2))
+library(wordcloud)
+m1 <- as.matrix(tdm1)
+# calculate the frequency of words and sort it by frequency
+word.freq1 <- sort(rowSums(m1), decreasing = F)
+# colors
+pal <- brewer.pal(9, "BuGn")
+pal <- pal[-(1:4)]
+# plot word cloud
+wordcloud(words = names(word.freq1), freq = word.freq1, min.freq = 3,
+random.order = F, colors = brewer.pal(6, "Dark2"))
+          
+```
+
+## Clustering
+
+```{r message=FALSE, warning=FALSE}
+# remove sparse terms
+tdm2 <- removeSparseTerms(tdm1, sparse = 0.95)
+m2 <- as.matrix(tdm2)
+# cluster terms
+distMatrix1 <- dist(scale(m2))
+fit1 <- hclust(distMatrix1, method = "ward")
+```
+
+
+
+## Nike
+```{r message=FALSE, warning=FALSE}
+plot(fit)
+rect.hclust(fit, k = 4,border = "red") # cut tree into 6 clusters
+```
+
+
+## Adidas
+```{r message=FALSE, warning=FALSE}
+plot(fit1)
+rect.hclust(fit1, k = 4,border = "red") # cut tree into 6 clusters
+```
+
+
+```{r message=FALSE, warning=FALSE}
+nike_df1 <- read_csv(file="nike_tweets.csv")
+```
+
+
+##Nike sentiment score
+```{r message=FALSE, warning=FALSE}
+nike_df1$text <- sapply(nike_df1$text,function(row) iconv(row, "latin1", "ASCII", sub=""))
+
+sent2 <- get_nrc_sentiment(nike_df1$text)
+# Let's look at the corpus as a whole again:
+sent3 <- as.data.frame(colSums(sent2))
+sent3 <- rownames_to_column(sent3) 
+colnames(sent3) <- c("emotion", "count")
+ggplot(sent3, aes(x = emotion, y = count, fill = emotion)) + geom_bar(stat = "identity") + theme_minimal() + theme(legend.position="none", panel.grid.major = element_blank()) + labs( x = "Emotion", y = "Total Count") + ggtitle("Sentiment of Nike tweets") + theme(plot.title = element_text(hjust=0.5))
+
+```
+## Read Nike tweets CSV
+```{r message=FALSE, warning=FALSE}
+adidas_df1 <- read_csv(file="adidas_tweets.csv")
+
+```
+
+
+##Nike sentiment score
+```{r message=FALSE, warning=FALSE}
+adidas_df1$text <- sapply(adidas_df1$text,function(row) iconv(row, "latin1", "ASCII", sub=""))
+
+sent21 <- get_nrc_sentiment(adidas_df1$text)
+# Let's look at the corpus as a whole again:
+sent31 <- as.data.frame(colSums(sent21))
+sent31 <- rownames_to_column(sent31)
+colnames(sent31) <- c("emotion", "count")
+ggplot(sent31, aes(x = emotion, y = count, fill = emotion)) + geom_bar(stat = "identity") + theme_minimal() + theme(legend.position="none", panel.grid.major = element_blank()) + labs( x = "Emotion", y = "Total Count") + ggtitle("Sentiment of Adidas tweets") + theme(plot.title = element_text(hjust=0.5))
+
+```
+
+
+
